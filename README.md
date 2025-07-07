@@ -1,145 +1,56 @@
-# Stock-prediction-webapp
-<!DOCTYPE html>
-<html>
-<head>
-  <title>📲 Multi-Task JS Dashboard</title>
-</head>
-<body>
-  <h1>📷 Multi-Task JS App</h1>
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
 
-  <!-- 1. Capture Photo -->
-  <h2>1. Capture Photo</h2>
-  <video id="video" width="320" height="240" autoplay></video>
-  <button onclick="takePhoto()">📸 Take Photo</button>
-  <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
-  <br><img id="photo" src="">
+st.set_page_config(page_title="Stock Price Predictor", layout="centered")
+st.title("📈 Stock Price Prediction App using Linear Regression")
 
-  <!-- 2. Send Email -->
-  <h2>2. Send Email (via backend)</h2>
-  <button onclick="sendEmail()">📧 Send Email</button>
+# --- User Inputs ---
+stock_symbol = st.text_input("Enter Stock Symbol (e.g., TATAMOTORS.NS, AAPL)", "TATAMOTORS.NS")
+start_date = st.date_input("Start Date", pd.to_datetime("2022-01-01"))
+end_date = st.date_input("End Date", pd.to_datetime("2024-12-31"))
+future_days = st.slider("Days to Predict", min_value=7, max_value=60, value=30)
 
-  <!-- 3. Send Captured Photo via Email -->
-  <h2>3. Send Captured Photo via Email</h2>
-  <button onclick="sendPhotoByEmail()">📤 Send Photo Email</button>
+if st.button("Predict"):
+    try:
+        # Load data
+        stock = yf.download(stock_symbol, start=start_date, end=end_date)
+        stock = stock[['Close']].dropna()
+        stock['Prediction'] = stock[['Close']].shift(-future_days)
 
-  <!-- 4. Record Video -->
-  <h2>4. Record Video</h2>
-  <button onclick="startRecording()">🎥 Start Recording</button>
-  <button onclick="stopRecording()">🛑 Stop & Send</button>
-  <video id="recorded" controls></video>
+        # Prepare data
+        X = stock[['Close']][:-future_days]
+        y = stock['Prediction'][:-future_days]
+        x_future = stock[['Close']][-future_days:]
 
-  <!-- 5. Send WhatsApp -->
-  <h2>5. Send WhatsApp</h2>
-  <input id="whatsappNumber" placeholder="Phone number with country code"/>
-  <input id="whatsappMessage" placeholder="Your message"/>
-  <button onclick="sendWhatsApp()">📨 Send WhatsApp</button>
+        # Split and train
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+        model = LinearRegression()
+        model.fit(X_train, y_train)
 
-  <!-- 6. Send SMS (needs backend API like Twilio) -->
-  <h2>6. Send SMS</h2>
-  <button onclick="alert('Use Twilio or Fast2SMS API to send SMS via backend')">📲 Send SMS</button>
+        # Make predictions
+        predictions = model.predict(x_future)
 
-  <!-- 7. Get Geolocation -->
-  <h2>7. Geolocation</h2>
-  <button onclick="getLocation()">📍 Get Location</button>
-  <div id="location"></div>
+        # Prepare dates
+        future_dates = pd.date_range(start=stock.index[-1], periods=future_days + 1, freq='B')[1:]
+        predicted_df = pd.DataFrame({'Date': future_dates, 'Predicted Price': predictions})
 
-  <!-- 8. Open Google Map -->
-  <h2>8. Open Google Maps with Live Location</h2>
-  <button onclick="openMap()">🌍 Open Google Maps</button>
+        # Plot
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.plot(stock.index[-60:], stock['Close'][-60:], label="Actual Price")
+        ax.plot(predicted_df['Date'], predicted_df['Predicted Price'], label="Predicted Price", linestyle='--')
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Stock Price")
+        ax.set_title(f"Predicted Stock Prices for {stock_symbol}")
+        ax.legend()
+        st.pyplot(fig)
 
-  <!-- 9. Show Last Email Info (placeholder) -->
-  <h2>9. Show Last Email Info</h2>
-  <button onclick="getLastEmail()">📩 Get Last Email</button>
-  <p id="emailInfo">No email fetched yet.</p>
+        # Show data
+        st.subheader("📊 Predicted Prices")
+        st.dataframe(predicted_df.set_index('Date'))
 
-  <!-- 10. Post on Instagram -->
-  <h2>10. Post on Instagram</h2>
-  <button onclick="alert('Instagram posting requires backend automation via Instabot or API')">📤 Post to Instagram</button>
-
-  <script>
-    navigator.mediaDevices.getUserMedia({ video: true })
-      .then(stream => { document.getElementById('video').srcObject = stream; });
-
-    function takePhoto() {
-      let canvas = document.getElementById('canvas');
-      let video = document.getElementById('video');
-      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-      let dataUrl = canvas.toDataURL('image/png');
-      document.getElementById('photo').src = dataUrl;
-      localStorage.setItem('capturedPhoto', dataUrl);
-    }
-
-    function sendEmail() {
-      fetch('/send-email', { method: 'POST' })
-        .then(res => alert('Email sent (mock)!'))
-        .catch(err => alert('Error sending email.'));
-    }
-
-    function sendPhotoByEmail() {
-      let data = localStorage.getItem('capturedPhoto');
-      fetch('/send-photo-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: data })
-      }).then(res => alert('Photo sent via email!'));
-    }
-
-    let mediaRecorder, recordedBlobs = [];
-    async function startRecording() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      recordedBlobs = [];
-      mediaRecorder = new MediaRecorder(stream);
-      mediaRecorder.ondataavailable = e => recordedBlobs.push(e.data);
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedBlobs, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        document.getElementById('recorded').src = url;
-
-        let reader = new FileReader();
-        reader.onloadend = () => {
-          fetch('/send-video-email', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ video: reader.result })
-          }).then(() => alert('Video sent!'));
-        };
-        reader.readAsDataURL(blob);
-      };
-      mediaRecorder.start();
-      alert('Recording...');
-    }
-
-    function stopRecording() {
-      mediaRecorder.stop();
-    }
-
-    function sendWhatsApp() {
-      let phone = document.getElementById('whatsappNumber').value;
-      let msg = document.getElementById('whatsappMessage').value;
-      let url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
-      window.open(url, '_blank');
-    }
-
-    function getLocation() {
-      navigator.geolocation.getCurrentPosition(position => {
-        const lat = position.coords.latitude;
-        const lon = position.coords.longitude;
-        document.getElementById('location').innerText = `Latitude: ${lat}, Longitude: ${lon}`;
-      });
-    }
-
-    function openMap() {
-      navigator.geolocation.getCurrentPosition(position => {
-        const lat = position.coords.latitude;
-        const lon = position.coords.longitude;
-        window.open(`https://www.google.com/maps?q=${lat},${lon}`, '_blank');
-      });
-    }
-
-    function getLastEmail() {
-      document.getElementById('emailInfo').innerText = 'Last email: Subject - Hello, Sent at 10:05 AM';
-    }
-  </script>
-</body>
-</html>
-
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
